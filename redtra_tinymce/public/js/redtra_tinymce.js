@@ -45,7 +45,7 @@ frappe.ui.form.ControlTextEditor = class ControlTextEditor extends frappe.ui.for
             contextmenu: 'link image imagetools table configurepermanentpen',
             a11y_advanced_options: true,
             skin: 'oxide-dark',
-            content_css: 'dark',
+            content_css: 'default',
             file_picker_callback: function (callback, value, meta) {
                 if (meta.filetype === 'image') {
                     var input = document.createElement('input');
