@@ -36,7 +36,13 @@ frappe.ui.form.ControlTextEditor = class ControlTextEditor extends frappe.ui.for
             content_css: false,
             toolbar_sticky: true,
             promotion: false,
+            valid_elements: '*[*]', // Allow all elements and attributes
+            extended_valid_elements: 'p[style|class],ol,ul,li,div[style|class]',
+            // other TinyMCE options...
             default_link_target: '_blank',
+            forced_root_block: 'p', // Set default root block element
+            force_br_newlines: false, // Ensure <br> is not forced
+            force_p_newlines: true, 
             height: 500,
             menubar: 'file edit view insert format tools table help',
             statusbar: true,
@@ -67,37 +73,7 @@ frappe.ui.form.ControlTextEditor = class ControlTextEditor extends frappe.ui.for
                     input.click();
                 }
             },
-
-            images_upload_handler: function (blobInfo, success, failure) {
-                let xhr = new XMLHttpRequest();
-                xhr.withCredentials = true; // Include credentials
-                xhr.open('POST', '/api/method/upload_file');
-
-                // Add CSRF token to the request
-                let csrf_token = frappe.csrf_token || $('[name="csrf_token"]').attr('content');
-                console.log(csrf_token);
-                xhr.setRequestHeader('X-Frappe-CSRF-Token', csrf_token);
-
-                xhr.onload = function () {
-                    let json = JSON.parse(xhr.responseText);
-                    if (xhr.status != 200) {
-                        failure('HTTP Error: ' + xhr.status);
-                        return;
-                    }
-                    if (!json || typeof json.message.file_url !== 'string') {
-                        failure('Invalid JSON: ' + xhr.responseText);
-                        return;
-                    }
-                    success(json.message.file_url);
-                };
-
-                let formData = new FormData();
-                formData.append('file', blobInfo.blob(), blobInfo.filename());
-                xhr.send(formData);
-            },
-
-
-
+            images_upload_handler: example_image_upload_handler,
             setup: function (editor) {
                 that.editor_id = editor.id;
                 editor.on('Change', function (e) {
@@ -114,20 +90,76 @@ frappe.ui.form.ControlTextEditor = class ControlTextEditor extends frappe.ui.for
 
     set_formatted_input(value) {
         try {
-            if (this.frm && this.frm.doc) {
-                if (!this.frm.doc.__setContent) {
-                    if (value) {
-                        this.activeEditor.setContent(value);
-                    } else {
-                        this.activeEditor.setContent('');
-                    }
-                    this.frm.doc.__setContent = 1;
+            if (this.activeEditor) {
+                if (value) {
+                    this.activeEditor.setContent(value);
+                } else {
+                    this.activeEditor.setContent('');
                 }
             } else {
-                console.warn('Form document is not defined');
+                console.warn('Active editor is not defined');
             }
         } catch (error) {
             console.error('Error setting formatted input:', error);
         }
     }
+    get_input_value() {
+        if (this.activeEditor) {
+            let content = this.activeEditor.getContent({ format: 'raw' });
+            return content ? content : '';
+        }
+        return '';
+    }
 };
+
+const example_image_upload_handler = (blobInfo, progress) => new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.withCredentials = false; // Set to true if credentials (such as cookies) are required
+    xhr.open('POST', '/api/method/upload_file'); // Set your upload endpoint
+
+    // Set the CSRF token for security
+    const csrf_token = frappe.csrf_token || $('[name="csrf_token"]').attr('content');
+    xhr.setRequestHeader('X-Frappe-CSRF-Token', csrf_token);
+
+    // Monitor upload progress
+    xhr.upload.onprogress = (e) => {
+        progress(e.loaded / e.total * 100); // Call the progress function with the upload percentage
+    };
+
+    // Handle the response
+    xhr.onload = () => {
+        if (xhr.status === 403) {
+            reject({ message: 'HTTP Error: ' + xhr.status, remove: true });
+            return;
+        }
+
+        if (xhr.status < 200 || xhr.status >= 300) {
+            reject('HTTP Error: ' + xhr.status);
+            return;
+        }
+
+        let json;
+        try {
+            json = JSON.parse(xhr.responseText); // Parse the JSON response
+            if (!json || typeof json.message.file_url !== 'string') {
+                reject('Invalid JSON: ' + xhr.responseText);
+                return;
+            }
+
+            // Resolve the Promise with the file URL
+            resolve(window.origin + json.message.file_url);
+        } catch (error) {
+            reject('Error parsing JSON: ' + xhr.responseText);
+        }
+    };
+
+    // Handle network errors
+    xhr.onerror = () => {
+        reject('Image upload failed due to a network error.');
+    };
+
+    // Prepare and send the FormData
+    const formData = new FormData();
+    formData.append('file', blobInfo.blob(), blobInfo.filename());
+    xhr.send(formData);
+});
