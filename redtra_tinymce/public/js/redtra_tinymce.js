@@ -40,9 +40,9 @@ frappe.ui.form.ControlTextEditor = class ControlTextEditor extends frappe.ui.for
             extended_valid_elements: 'p[style|class],ol,ul,li,div[style|class]',
             // other TinyMCE options...
             default_link_target: '_blank',
-            forced_root_block: 'p', // Set default root block element
-            force_br_newlines: false, // Ensure <br> is not forced
-            force_p_newlines: true, 
+            forced_root_block: 'div', // Set default root block element
+            force_br_newlines: true, // Ensure <br> is not forced
+            force_p_newlines: false, 
             height: 500,
             menubar: 'file edit view insert format tools table help',
             statusbar: true,
@@ -76,9 +76,28 @@ frappe.ui.form.ControlTextEditor = class ControlTextEditor extends frappe.ui.for
             images_upload_handler: example_image_upload_handler,
             setup: function (editor) {
                 that.editor_id = editor.id;
-                editor.on('Change', function (e) {
-                    that.parse_validate_and_set_in_model(e.level.content);
+                let isEnterKeyPressed = false;
+            
+                // Track Enter key presses
+                editor.on('keydown', function (e) {
+                   
+                    if (e.keyCode === 13) { // Enter key
+                        isEnterKeyPressed = true;
+                    } else {
+                        isEnterKeyPressed = false;
+                    }
+                    console.log(e.keyCode,isEnterKeyPressed);
                 });
+            
+                editor.on('change', function (e) {
+                    if (!isEnterKeyPressed) {
+                        const transformedContent = transformNumberedLists(e.level.content);
+                        that.parse_validate_and_set_in_model(transformedContent);
+                        console.log('Content changed:', transformedContent);
+                    }
+                    console.log(isEnterKeyPressed);
+                });
+            
                 editor.on('init', function (e) {
                     editor.setContent(that.value);
                 });
@@ -111,6 +130,22 @@ frappe.ui.form.ControlTextEditor = class ControlTextEditor extends frappe.ui.for
         return '';
     }
 };
+
+// Function to transform numbered lists
+function transformNumberedLists(content) {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = content;
+
+    const listItems = tempDiv.querySelectorAll('li');
+    listItems.forEach((item) => {
+        const text = item.textContent;
+        if (/^\d+\. /.test(text)) {
+            item.innerHTML = text.replace(/^\d+\. /, `<strong>${text.match(/^\d+\. /)}</strong>`);
+        }
+    });
+
+    return tempDiv.innerHTML;
+}
 
 const example_image_upload_handler = (blobInfo, progress) => new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
